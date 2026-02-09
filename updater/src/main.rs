@@ -232,14 +232,13 @@ fn schedule_updater_replacement(app_dir: &Path, logger: &mut Logger) {
 }
 
 fn find_app_exe(app_dir: &Path, logger: &mut Logger) -> Option<PathBuf> {
-    let direct = app_dir.join(APP_EXE);
-    if direct.exists() {
-        logger.log(format!(
-            "Using app executable: {}",
-            pretty_path(&direct, app_dir)
-        ));
-        return Some(direct);
-    }
+    let mut search_dirs = vec![
+        app_dir.join("app"),
+        app_dir.join("app.dist"),
+        app_dir.join("main.dist"),
+        app_dir.join("main"),
+        app_dir.to_path_buf(),
+    ];
 
     if let Ok(entries) = fs::read_dir(app_dir) {
         for entry in entries.flatten() {
@@ -251,56 +250,70 @@ fn find_app_exe(app_dir: &Path, logger: &mut Logger) -> Option<PathBuf> {
             let Some(dir_name) = path.file_name().and_then(OsStr::to_str) else {
                 continue;
             };
-            if !dir_name.ends_with(".dist") {
+            if !dir_name.to_ascii_lowercase().ends_with(".dist") {
                 continue;
             }
 
-            let preferred = path.join(APP_EXE);
-            if preferred.exists() {
-                logger.log(format!(
-                    "Using standalone app executable: {}",
-                    pretty_path(&preferred, app_dir)
-                ));
-                return Some(preferred);
+            if !search_dirs.iter().any(|candidate| candidate == &path) {
+                search_dirs.push(path);
             }
+        }
+    }
 
-            if let Ok(dist_entries) = fs::read_dir(&path) {
-                for dist_entry in dist_entries.flatten() {
-                    let dist_path = dist_entry.path();
-                    if !dist_path.is_file() {
-                        continue;
-                    }
-                    let is_exe = dist_path
-                        .extension()
-                        .and_then(OsStr::to_str)
-                        .map(|ext| ext.eq_ignore_ascii_case("exe"))
-                        .unwrap_or(false);
-                    if !is_exe {
-                        continue;
-                    }
+    for dir in &search_dirs {
+        let preferred = dir.join(APP_EXE);
+        if preferred.exists() {
+            logger.log(format!(
+                "Using app executable: {}",
+                pretty_path(&preferred, app_dir)
+            ));
+            return Some(preferred);
+        }
+    }
 
-                    let file_name = dist_path
-                        .file_name()
-                        .and_then(OsStr::to_str)
-                        .unwrap_or_default();
-                    if file_name.eq_ignore_ascii_case(UPDATER_EXE)
-                        || file_name.eq_ignore_ascii_case("LetMeSleep-Updater.new.exe")
-                    {
-                        continue;
-                    }
+    for dir in &search_dirs {
+        if !dir.is_dir() {
+            continue;
+        }
 
-                    logger.log(format!(
-                        "Using fallback standalone executable: {}",
-                        pretty_path(&dist_path, app_dir)
-                    ));
-                    return Some(dist_path);
+        if let Ok(entries) = fs::read_dir(dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if !path.is_file() {
+                    continue;
                 }
+
+                let is_exe = path
+                    .extension()
+                    .and_then(OsStr::to_str)
+                    .map(|ext| ext.eq_ignore_ascii_case("exe"))
+                    .unwrap_or(false);
+                if !is_exe {
+                    continue;
+                }
+
+                let file_name = path
+                    .file_name()
+                    .and_then(OsStr::to_str)
+                    .unwrap_or_default();
+                if file_name.eq_ignore_ascii_case(UPDATER_EXE)
+                    || file_name.eq_ignore_ascii_case("LetMeSleep-Updater.new.exe")
+                {
+                    continue;
+                }
+
+                logger.log(format!(
+                    "Using fallback executable in {}: {}",
+                    pretty_path(dir, app_dir),
+                    pretty_path(&path, app_dir)
+                ));
+                return Some(path);
             }
         }
     }
 
     logger.log(format!(
-        "App executable not found in {} (expected {APP_EXE})",
+        "App executable not found in {} (expected {APP_EXE} in app, app root, main.dist, main, or *.dist)",
         app_dir.display()
     ));
     None

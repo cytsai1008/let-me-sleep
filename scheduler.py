@@ -11,6 +11,26 @@ import ctypes
 TASK_NAME = "LetMeSleep"
 
 
+def _to_long_path(path: str) -> str:
+    """Return a normalized long path when available."""
+    normalized = os.path.abspath(path)
+    if os.name != "nt":
+        return normalized
+
+    try:
+        buffer = ctypes.create_unicode_buffer(32768)
+        result = ctypes.windll.kernel32.GetLongPathNameW(
+            normalized,
+            buffer,
+            len(buffer),
+        )
+        if result == 0 or result > len(buffer):
+            return normalized
+        return buffer.value
+    except Exception:
+        return normalized
+
+
 def _is_packaged_runtime() -> bool:
     """Detect compiled/runtime-packaged execution (Nuitka/onefile/standalone)."""
     if getattr(sys, "frozen", False):
@@ -44,25 +64,25 @@ def _guess_app_dir() -> str:
 
     nuitka_dir = _nuitka_containing_dir()
     if nuitka_dir:
-        candidates.append(nuitka_dir)
+        candidates.append(_to_long_path(nuitka_dir))
 
     for raw in (sys.argv[0], sys.executable, os.getcwd()):
         if not raw:
             continue
-        path = os.path.abspath(raw)
+        path = _to_long_path(os.path.abspath(raw))
         directory = path if os.path.isdir(path) else os.path.dirname(path)
         if directory and directory not in candidates:
             candidates.append(directory)
 
     for directory in candidates:
         if os.path.exists(os.path.join(directory, "LetMeSleep-Updater.exe")):
-            return directory
+            return _to_long_path(directory)
 
     for directory in candidates:
         if os.path.exists(os.path.join(directory, "LetMeSleep.exe")):
-            return directory
+            return _to_long_path(directory)
 
-    return candidates[0] if candidates else os.path.abspath(".")
+    return _to_long_path(candidates[0]) if candidates else _to_long_path(".")
 
 
 def is_admin() -> bool:
@@ -76,19 +96,19 @@ def is_admin() -> bool:
 def get_task_command() -> tuple[str, str]:
     """Get command/arguments for the scheduled task (prefer updater)."""
     if _is_packaged_runtime():
-        app_dir = _guess_app_dir()
-        updater_exe = os.path.join(app_dir, "LetMeSleep-Updater.exe")
+        app_dir = _to_long_path(_guess_app_dir())
+        updater_exe = _to_long_path(os.path.join(app_dir, "LetMeSleep-Updater.exe"))
 
         if os.path.exists(updater_exe):
             return updater_exe, f'"{app_dir}" --no-update'
 
         # Fallback if updater is missing
-        app_exe = os.path.join(app_dir, "LetMeSleep.exe")
+        app_exe = _to_long_path(os.path.join(app_dir, "LetMeSleep.exe"))
         if os.path.exists(app_exe):
             return app_exe, ""
-        return os.path.abspath(sys.argv[0]), ""
+        return _to_long_path(os.path.abspath(sys.argv[0])), ""
 
-    script_dir = os.path.dirname(os.path.abspath(__file__))
+    script_dir = _to_long_path(os.path.dirname(os.path.abspath(__file__)))
     updater_exe = os.path.join(
         script_dir, "updater", "target", "release", "letmesleep-updater.exe"
     )
@@ -97,7 +117,9 @@ def get_task_command() -> tuple[str, str]:
         return updater_exe, f'"{script_dir}" --no-update'
 
     # Fallback: run python script directly in development mode
-    return sys.executable, f'"{os.path.abspath(sys.argv[0])}"'
+    return _to_long_path(
+        sys.executable
+    ), f'"{_to_long_path(os.path.abspath(sys.argv[0]))}"'
 
 
 def is_task_installed() -> bool:
@@ -247,9 +269,13 @@ def run_as_admin_for_install():
     if _is_packaged_runtime():
         # Running as exe
         params = "--install-task"
-        app_dir = _guess_app_dir()
-        app_exe = os.path.join(app_dir, "LetMeSleep.exe")
-        exe = app_exe if os.path.exists(app_exe) else os.path.abspath(sys.argv[0])
+        app_dir = _to_long_path(_guess_app_dir())
+        app_exe = _to_long_path(os.path.join(app_dir, "LetMeSleep.exe"))
+        exe = (
+            app_exe
+            if os.path.exists(app_exe)
+            else _to_long_path(os.path.abspath(sys.argv[0]))
+        )
     else:
         params = f'"{script}" --install-task'
         exe = python
@@ -265,9 +291,13 @@ def run_as_admin_for_uninstall():
 
     if _is_packaged_runtime():
         params = "--uninstall-task"
-        app_dir = _guess_app_dir()
-        app_exe = os.path.join(app_dir, "LetMeSleep.exe")
-        exe = app_exe if os.path.exists(app_exe) else os.path.abspath(sys.argv[0])
+        app_dir = _to_long_path(_guess_app_dir())
+        app_exe = _to_long_path(os.path.join(app_dir, "LetMeSleep.exe"))
+        exe = (
+            app_exe
+            if os.path.exists(app_exe)
+            else _to_long_path(os.path.abspath(sys.argv[0]))
+        )
     else:
         params = f'"{script}" --uninstall-task'
         exe = python

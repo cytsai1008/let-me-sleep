@@ -4,7 +4,7 @@
 ; https://www.flaticon.com/free-icons/sleep
 
 #define MyAppName "Let Me Sleep"
-#define MyAppVersion "0.1.2"
+#define MyAppVersion "0.1.3"
 #define MyAppPublisher "Let Me Sleep"
 #define MyAppURL "https://github.com/cytsai1008/let-me-sleep"
 #define MyAppExeName "LetMeSleep.exe"
@@ -40,9 +40,9 @@ Name: "scheduledtask"; Description: "Install as scheduled task (enables admin pr
 Name: "autostart"; Description: "Start at user logon (requires scheduled task)"; GroupDescription: "Options:"; Flags: unchecked; Check: IsScheduledTaskSelected
 
 [Files]
-Source: "dist\main.dist\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist
-Source: "dist\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
-Source: "updater\target\release\letmesleep-updater.exe"; DestDir: "{app}"; DestName: "LetMeSleep-Updater.exe"; Flags: ignoreversion
+Source: "dist\main.dist\*"; DestDir: "{app}\app"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist
+Source: "dist\{#MyAppExeName}"; DestDir: "{app}\app"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "dist\LetMeSleep-Updater.exe"; DestDir: "{app}"; DestName: "LetMeSleep-Updater.exe"; Flags: ignoreversion skipifsourcedoesntexist
 Source: "dist\VERSION"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
@@ -52,9 +52,13 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\LetMeSleep-Updater.exe"; Pa
 
 [Run]
 ; Install scheduled task with autostart if both selected
-Filename: "{app}\{#MyAppExeName}"; Parameters: "--install-task-with-autostart"; Flags: runhidden; Check: IsAutostartSelected
+Filename: "{app}\app\{#MyAppExeName}"; Parameters: "--install-task-with-autostart"; Flags: runhidden; Check: IsAutostartSelected and FileExists(ExpandConstant('{app}\app\{#MyAppExeName}'))
+Filename: "{app}\main.dist\{#MyAppExeName}"; Parameters: "--install-task-with-autostart"; Flags: runhidden; Check: IsAutostartSelected and FileExists(ExpandConstant('{app}\main.dist\{#MyAppExeName}'))
+Filename: "{app}\main\{#MyAppExeName}"; Parameters: "--install-task-with-autostart"; Flags: runhidden; Check: IsAutostartSelected and FileExists(ExpandConstant('{app}\main\{#MyAppExeName}'))
 ; Install scheduled task without autostart if only task selected
-Filename: "{app}\{#MyAppExeName}"; Parameters: "--install-task"; Flags: runhidden; Check: IsTaskOnlySelected
+Filename: "{app}\app\{#MyAppExeName}"; Parameters: "--install-task"; Flags: runhidden; Check: IsTaskOnlySelected and FileExists(ExpandConstant('{app}\app\{#MyAppExeName}'))
+Filename: "{app}\main.dist\{#MyAppExeName}"; Parameters: "--install-task"; Flags: runhidden; Check: IsTaskOnlySelected and FileExists(ExpandConstant('{app}\main.dist\{#MyAppExeName}'))
+Filename: "{app}\main\{#MyAppExeName}"; Parameters: "--install-task"; Flags: runhidden; Check: IsTaskOnlySelected and FileExists(ExpandConstant('{app}\main\{#MyAppExeName}'))
 ; Launch updater after install (it launches app)
 Filename: "{app}\LetMeSleep-Updater.exe"; Parameters: """{app}"""; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
 

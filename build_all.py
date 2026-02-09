@@ -230,7 +230,7 @@ def create_version_file():
 
 
 def create_zip_release():
-    """Create a ZIP where main.dist contents and updater sit at root."""
+    """Create a ZIP with app payload under app/ and updater at root."""
     print_section("Creating Release ZIP")
 
     dist_dir = Path("dist")
@@ -252,6 +252,7 @@ def create_zip_release():
         runtime_candidates = sorted(dist_dir.glob("*.dist"))
         if runtime_candidates:
             runtime_dir = runtime_candidates[0]
+    onefile_exe = dist_dir / APP_EXE
 
     zip_path = Path(f"{zip_name}.zip")
     if zip_path.exists():
@@ -259,11 +260,17 @@ def create_zip_release():
 
     with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         if runtime_dir.exists() and runtime_dir.is_dir():
+            print(f"Adding runtime folder to ZIP: {pretty_path(runtime_dir)}")
             for path in runtime_dir.rglob("*"):
                 if path.is_file():
-                    archive.write(path, path.relative_to(runtime_dir))
+                    archive.write(path, Path("app") / path.relative_to(runtime_dir))
+        elif onefile_exe.exists():
+            print(f"Adding onefile app to ZIP: {pretty_path(onefile_exe)}")
+            archive.write(onefile_exe, Path("app") / APP_EXE)
         else:
-            print("⚠️  Runtime folder not found (expected dist/main.dist or *.dist)")
+            print(
+                "⚠️  App payload not found (expected dist/main.dist, dist/*.dist, or dist/LetMeSleep.exe)"
+            )
 
         updater_path = dist_dir / "LetMeSleep-Updater.exe"
         if updater_path.exists():

@@ -25,6 +25,42 @@ from i18n import t
 import scheduler
 
 
+SINGLE_INSTANCE_MUTEX_NAME = "Local\\LetMeSleep.SingleInstance"
+SHOW_GUI_EVENT_NAME = "Local\\LetMeSleep.ShowGui"
+ERROR_ALREADY_EXISTS = 183
+WAIT_OBJECT_0 = 0
+EVENT_MODIFY_STATE = 0x0002
+
+_single_instance_mutex_handle = None
+
+
+def acquire_single_instance() -> bool:
+    """Return True when this process is the primary instance."""
+    global _single_instance_mutex_handle
+    handle = ctypes.windll.kernel32.CreateMutexW(
+        None, False, SINGLE_INSTANCE_MUTEX_NAME
+    )
+    if not handle:
+        return True
+    _single_instance_mutex_handle = handle
+    return ctypes.windll.kernel32.GetLastError() != ERROR_ALREADY_EXISTS
+
+
+def signal_existing_instance_show_gui() -> bool:
+    """Signal the running instance to open/show its GUI window."""
+    for _ in range(20):
+        event_handle = ctypes.windll.kernel32.OpenEventW(
+            EVENT_MODIFY_STATE, False, SHOW_GUI_EVENT_NAME
+        )
+        if event_handle:
+            try:
+                return bool(ctypes.windll.kernel32.SetEvent(event_handle))
+            finally:
+                ctypes.windll.kernel32.CloseHandle(event_handle)
+        time.sleep(0.1)
+    return False
+
+
 def is_admin() -> bool:
     """Check if running with administrator privileges."""
     try:
@@ -585,6 +621,7 @@ class SleepMonitor:
         self.update_interval = 10
         self.ctk_root: Optional[ctk.CTk] = None
         self._root_tk_icon_images = None
+        self._show_gui_event_handle = None
 
     def get_menu(self) -> pystray.Menu:
         """Generate the context menu."""
@@ -741,10 +778,34 @@ class SleepMonitor:
     def quit(self, icon=None, item=None):
         """Exit the application."""
         self.running = False
+        if self._show_gui_event_handle:
+            ctypes.windll.kernel32.CloseHandle(self._show_gui_event_handle)
+            self._show_gui_event_handle = None
         if self.ctk_root:
             self.ctk_root.after(0, self.ctk_root.quit)
         if self.icon:
             self.icon.stop()
+
+    def _start_show_gui_listener(self):
+        """Listen for external launch requests and open existing GUI."""
+        event_handle = ctypes.windll.kernel32.CreateEventW(
+            None, False, False, SHOW_GUI_EVENT_NAME
+        )
+        if not event_handle:
+            return
+
+        self._show_gui_event_handle = event_handle
+
+        def _listen():
+            while self.running and self._show_gui_event_handle:
+                wait_result = ctypes.windll.kernel32.WaitForSingleObject(
+                    event_handle, 500
+                )
+                if wait_result == WAIT_OBJECT_0 and self.ctk_root:
+                    self.ctk_root.after(0, self._show_window_safe)
+
+        listener_thread = threading.Thread(target=_listen, daemon=True)
+        listener_thread.start()
 
     def run(self):
         """Start the application."""
@@ -755,6 +816,7 @@ class SleepMonitor:
         self._root_tk_icon_images = apply_window_icon(self.ctk_root)
         self.ctk_root.after(350, lambda: apply_window_icon(self.ctk_root))
         self.ctk_root.withdraw()
+        self._start_show_gui_listener()
 
         # Initial update
         self.update()
@@ -799,6 +861,10 @@ def main():
         success, msg = scheduler.uninstall_task()
         print(msg)
         sys.exit(0 if success else 1)
+
+    if not acquire_single_instance():
+        signal_existing_instance_show_gui()
+        sys.exit(0)
 
     # If not admin, try to use scheduled task or request elevation
     if not is_admin():

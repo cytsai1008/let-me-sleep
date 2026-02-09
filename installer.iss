@@ -45,9 +45,9 @@ Source: "updater\target\release\letmesleep-updater.exe"; DestDir: "{app}"; DestN
 Source: "dist\VERSION"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
-Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
+Name: "{group}\{#MyAppName}"; Filename: "{app}\LetMeSleep-Updater.exe"; Parameters: """{app}"" --no-update"
 Name: "{group}\{cm:UninstallProgram,{#MyAppName}}"; Filename: "{uninstallexe}"
-Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
+Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\LetMeSleep-Updater.exe"; Parameters: """{app}"" --no-update"; Tasks: desktopicon
 
 [Run]
 ; Install scheduled task with autostart if both selected

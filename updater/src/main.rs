@@ -218,13 +218,39 @@ fn schedule_updater_replacement(app_dir: &Path, logger: &mut Logger) {
     }
 }
 
-fn launch_app(app_dir: &Path, logger: &mut Logger) {
+fn launch_app(app_dir: &Path, logger: &mut Logger, extra_args: &[&str]) {
     let app_path = app_dir.join(APP_EXE);
     if app_path.exists() {
         logger.log(format!("Launching {APP_EXE}"));
-        let _ = Command::new(&app_path).spawn();
+        let mut command = Command::new(&app_path);
+        if !extra_args.is_empty() {
+            command.args(extra_args);
+        }
+        let _ = command.spawn();
     } else {
         logger.log(format!("{APP_EXE} not found in {}", app_dir.display()));
+    }
+}
+
+fn is_app_running(logger: &mut Logger) -> bool {
+    let mut command = Command::new("tasklist");
+    command.args(["/FI", &format!("IMAGENAME eq {APP_EXE}"), "/FO", "CSV", "/NH"]);
+    #[cfg(target_os = "windows")]
+    {
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+
+    match command.output() {
+        Ok(output) => {
+            let stdout = String::from_utf8_lossy(&output.stdout).to_lowercase();
+            let running = stdout.contains(&APP_EXE.to_lowercase());
+            logger.log(format!("{APP_EXE} running: {running}"));
+            running
+        }
+        Err(e) => {
+            logger.log(format!("Failed to query running process: {e}"));
+            false
+        }
     }
 }
 
@@ -241,14 +267,29 @@ fn default_app_dir() -> PathBuf {
 fn run() -> Result<(), String> {
     let args: Vec<String> = env::args().collect();
 
-    let app_dir = if args.len() >= 2 {
-        PathBuf::from(&args[1])
-    } else {
-        default_app_dir()
-    };
+    let mut skip_update = false;
+    let mut app_dir_arg: Option<PathBuf> = None;
+    for arg in args.iter().skip(1) {
+        if arg == "--no-update" {
+            skip_update = true;
+        } else if !arg.starts_with('-') && app_dir_arg.is_none() {
+            app_dir_arg = Some(PathBuf::from(arg));
+        }
+    }
+
+    let app_dir = app_dir_arg.unwrap_or_else(default_app_dir);
     let mut logger = Logger::new(&app_dir);
     logger.log("Updater started");
     logger.log(format!("Using app dir: {}", app_dir.display()));
+
+    if skip_update {
+        if is_app_running(&mut logger) {
+            logger.log("--no-update set and app already running; skipping update check");
+            launch_app(&app_dir, &mut logger, &[]);
+            return Ok(());
+        }
+        logger.log("--no-update set but app is not running; continuing with update check");
+    }
 
     let current = get_current_version(&app_dir).unwrap_or(Version::new(0, 0, 0));
     logger.log(format!("Current version: v{current}"));
@@ -260,7 +301,7 @@ fn run() -> Result<(), String> {
 
     let Some((tag, asset)) = check_for_update(&client, REPO, &current, &mut logger) else {
         logger.log("App is up to date");
-        launch_app(&app_dir, &mut logger);
+        launch_app(&app_dir, &mut logger, &[]);
         return Ok(());
     };
 
@@ -287,7 +328,7 @@ fn run() -> Result<(), String> {
     schedule_updater_replacement(&app_dir, &mut logger);
 
     logger.log(format!("Update complete: v{latest}"));
-    launch_app(&app_dir, &mut logger);
+    launch_app(&app_dir, &mut logger, &[]);
     Ok(())
 }
 

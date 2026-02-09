@@ -3,6 +3,7 @@
 use reqwest::blocking::Client;
 use semver::Version;
 use serde::Deserialize;
+use std::ffi::OsStr;
 use std::env;
 use std::fs;
 use std::fs::OpenOptions;
@@ -39,6 +40,18 @@ struct Asset {
 
 struct Logger {
     file: Option<fs::File>,
+}
+
+fn pretty_path(path: &Path, base_dir: &Path) -> String {
+    path.strip_prefix(base_dir)
+        .map(|p| {
+            if p.as_os_str().is_empty() {
+                ".".to_string()
+            } else {
+                p.display().to_string()
+            }
+        })
+        .unwrap_or_else(|_| path.display().to_string())
 }
 
 impl Logger {
@@ -138,10 +151,10 @@ fn download(
     Ok(())
 }
 
-fn kill_app(logger: &mut Logger) {
-    logger.log(format!("Stopping {APP_EXE}"));
+fn kill_app(process_name: &str, logger: &mut Logger) {
+    logger.log(format!("Stopping {process_name}"));
     let _ = Command::new("taskkill")
-        .args(["/F", "/IM", APP_EXE])
+        .args(["/F", "/IM", process_name])
         .output();
     thread::sleep(Duration::from_secs(2));
 }
@@ -218,23 +231,103 @@ fn schedule_updater_replacement(app_dir: &Path, logger: &mut Logger) {
     }
 }
 
-fn launch_app(app_dir: &Path, logger: &mut Logger, extra_args: &[&str]) {
-    let app_path = app_dir.join(APP_EXE);
+fn find_app_exe(app_dir: &Path, logger: &mut Logger) -> Option<PathBuf> {
+    let direct = app_dir.join(APP_EXE);
+    if direct.exists() {
+        logger.log(format!(
+            "Using app executable: {}",
+            pretty_path(&direct, app_dir)
+        ));
+        return Some(direct);
+    }
+
+    if let Ok(entries) = fs::read_dir(app_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.is_dir() {
+                continue;
+            }
+
+            let Some(dir_name) = path.file_name().and_then(OsStr::to_str) else {
+                continue;
+            };
+            if !dir_name.ends_with(".dist") {
+                continue;
+            }
+
+            let preferred = path.join(APP_EXE);
+            if preferred.exists() {
+                logger.log(format!(
+                    "Using standalone app executable: {}",
+                    pretty_path(&preferred, app_dir)
+                ));
+                return Some(preferred);
+            }
+
+            if let Ok(dist_entries) = fs::read_dir(&path) {
+                for dist_entry in dist_entries.flatten() {
+                    let dist_path = dist_entry.path();
+                    if !dist_path.is_file() {
+                        continue;
+                    }
+                    let is_exe = dist_path
+                        .extension()
+                        .and_then(OsStr::to_str)
+                        .map(|ext| ext.eq_ignore_ascii_case("exe"))
+                        .unwrap_or(false);
+                    if !is_exe {
+                        continue;
+                    }
+
+                    let file_name = dist_path
+                        .file_name()
+                        .and_then(OsStr::to_str)
+                        .unwrap_or_default();
+                    if file_name.eq_ignore_ascii_case(UPDATER_EXE)
+                        || file_name.eq_ignore_ascii_case("LetMeSleep-Updater.new.exe")
+                    {
+                        continue;
+                    }
+
+                    logger.log(format!(
+                        "Using fallback standalone executable: {}",
+                        pretty_path(&dist_path, app_dir)
+                    ));
+                    return Some(dist_path);
+                }
+            }
+        }
+    }
+
+    logger.log(format!(
+        "App executable not found in {} (expected {APP_EXE})",
+        app_dir.display()
+    ));
+    None
+}
+
+fn launch_app(app_path: &Path, app_dir: &Path, logger: &mut Logger, extra_args: &[&str]) {
     if app_path.exists() {
-        logger.log(format!("Launching {APP_EXE}"));
+        logger.log(format!("Launching {}", pretty_path(app_path, app_dir)));
         let mut command = Command::new(&app_path);
         if !extra_args.is_empty() {
             command.args(extra_args);
         }
         let _ = command.spawn();
     } else {
-        logger.log(format!("{APP_EXE} not found in {}", app_dir.display()));
+        logger.log(format!("{} not found", pretty_path(app_path, app_dir)));
     }
 }
 
-fn is_app_running(logger: &mut Logger) -> bool {
+fn is_app_running(process_name: &str, logger: &mut Logger) -> bool {
     let mut command = Command::new("tasklist");
-    command.args(["/FI", &format!("IMAGENAME eq {APP_EXE}"), "/FO", "CSV", "/NH"]);
+    command.args([
+        "/FI",
+        &format!("IMAGENAME eq {process_name}"),
+        "/FO",
+        "CSV",
+        "/NH",
+    ]);
     #[cfg(target_os = "windows")]
     {
         command.creation_flags(CREATE_NO_WINDOW);
@@ -243,8 +336,8 @@ fn is_app_running(logger: &mut Logger) -> bool {
     match command.output() {
         Ok(output) => {
             let stdout = String::from_utf8_lossy(&output.stdout).to_lowercase();
-            let running = stdout.contains(&APP_EXE.to_lowercase());
-            logger.log(format!("{APP_EXE} running: {running}"));
+            let running = stdout.contains(&process_name.to_lowercase());
+            logger.log(format!("{process_name} running: {running}"));
             running
         }
         Err(e) => {
@@ -280,12 +373,32 @@ fn run() -> Result<(), String> {
     let app_dir = app_dir_arg.unwrap_or_else(default_app_dir);
     let mut logger = Logger::new(&app_dir);
     logger.log("Updater started");
-    logger.log(format!("Using app dir: {}", app_dir.display()));
+    logger.log(format!("Using app dir: {}", pretty_path(&app_dir, &app_dir)));
+
+    let primary_app_path = app_dir.join(APP_EXE);
+    let app_path = if primary_app_path.exists() {
+        logger.log(format!(
+            "Using app executable: {}",
+            pretty_path(&primary_app_path, &app_dir)
+        ));
+        primary_app_path.clone()
+    } else {
+        logger.log(format!(
+            "Primary app path missing ({}), searching fallback",
+            pretty_path(&primary_app_path, &app_dir)
+        ));
+        find_app_exe(&app_dir, &mut logger).unwrap_or(primary_app_path.clone())
+    };
+    let app_process_name = app_path
+        .file_name()
+        .and_then(OsStr::to_str)
+        .unwrap_or(APP_EXE)
+        .to_string();
 
     if skip_update {
-        if is_app_running(&mut logger) {
+        if is_app_running(&app_process_name, &mut logger) {
             logger.log("--no-update set and app already running; skipping update check");
-            launch_app(&app_dir, &mut logger, &[]);
+            launch_app(&app_path, &app_dir, &mut logger, &[]);
             return Ok(());
         }
         logger.log("--no-update set but app is not running; continuing with update check");
@@ -301,7 +414,7 @@ fn run() -> Result<(), String> {
 
     let Some((tag, asset)) = check_for_update(&client, REPO, &current, &mut logger) else {
         logger.log("App is up to date");
-        launch_app(&app_dir, &mut logger, &[]);
+        launch_app(&app_path, &app_dir, &mut logger, &[]);
         return Ok(());
     };
 
@@ -314,7 +427,7 @@ fn run() -> Result<(), String> {
         return Err(e);
     }
 
-    kill_app(&mut logger);
+    kill_app(&app_process_name, &mut logger);
 
     if let Err(e) = extract_zip(&temp_zip, &app_dir, &mut logger) {
         logger.log(format!("ERROR: {e}"));
@@ -328,7 +441,12 @@ fn run() -> Result<(), String> {
     schedule_updater_replacement(&app_dir, &mut logger);
 
     logger.log(format!("Update complete: v{latest}"));
-    launch_app(&app_dir, &mut logger, &[]);
+    let launch_after_update = if primary_app_path.exists() {
+        primary_app_path
+    } else {
+        find_app_exe(&app_dir, &mut logger).unwrap_or(app_path)
+    };
+    launch_app(&launch_after_update, &app_dir, &mut logger, &[]);
     Ok(())
 }
 

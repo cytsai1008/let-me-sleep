@@ -74,12 +74,26 @@ def run_as_admin():
     script = sys.argv[0]
     params = " ".join(sys.argv[1:])
 
+    is_packaged_runtime = (
+        getattr(sys, "frozen", False) or globals().get("__compiled__") is not None
+    )
+
+    if is_packaged_runtime:
+        exe = os.path.abspath(script)
+        ret = ctypes.windll.shell32.ShellExecuteW(
+            None,
+            "runas",
+            exe,
+            params,
+            None,
+            1,
+        )
+        return ret > 32
+
     # Use pythonw.exe if available to avoid console window
     python = sys.executable
     if python.endswith("python.exe"):
         pythonw = python.replace("python.exe", "pythonw.exe")
-        import os
-
         if os.path.exists(pythonw):
             python = pythonw
 

@@ -9,6 +9,7 @@ import os
 import shutil
 from pathlib import Path
 
+VERSION = "0.1.1"
 
 def print_section(title):
     """Print a section header."""
@@ -174,7 +175,7 @@ def create_version_file():
     print_section("Creating VERSION File")
 
     # Try to get version from pyproject.toml
-    version = "0.1.0"  # default
+    version = VERSION  # default
     try:
         with open("pyproject.toml", "r", encoding="utf-8") as f:
             for line in f:
@@ -200,7 +201,7 @@ def create_zip_release():
         return False
 
     # Get version for filename
-    version = "0.1.0"
+    version = VERSION
     version_file = dist_dir / "VERSION"
     if version_file.exists():
         version = version_file.read_text(encoding="utf-8").strip()

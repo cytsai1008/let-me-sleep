@@ -7,6 +7,8 @@ use std::env;
 use std::fs;
 use std::fs::OpenOptions;
 use std::io::{self, Write};
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::thread;
@@ -17,7 +19,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 // https://www.flaticon.com/free-icons/sleep
 
 const APP_EXE: &str = "LetMeSleep.exe";
+const UPDATER_EXE: &str = "LetMeSleep-Updater.exe";
 const REPO: &str = "cytsai1008/let-me-sleep";
+#[cfg(target_os = "windows")]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 #[derive(Deserialize)]
 struct Release {
@@ -148,7 +153,19 @@ fn extract_zip(zip_path: &Path, dest: &Path, logger: &mut Logger) -> Result<(), 
 
     for i in 0..archive.len() {
         let mut entry = archive.by_index(i).map_err(|e| format!("Zip entry: {e}"))?;
-        let out_path = dest.join(entry.name());
+        let entry_name = entry.name().replace('\\', "/");
+
+        let out_path = if entry_name
+            .rsplit('/')
+            .next()
+            .map(|name| name.eq_ignore_ascii_case(UPDATER_EXE))
+            .unwrap_or(false)
+        {
+            logger.log("Staging updater replacement file");
+            dest.join("LetMeSleep-Updater.new.exe")
+        } else {
+            dest.join(entry.name())
+        };
 
         if entry.is_dir() {
             fs::create_dir_all(&out_path).ok();
@@ -163,6 +180,42 @@ fn extract_zip(zip_path: &Path, dest: &Path, logger: &mut Logger) -> Result<(), 
     }
     logger.log("Extraction complete");
     Ok(())
+}
+
+fn schedule_updater_replacement(app_dir: &Path, logger: &mut Logger) {
+    let staged = app_dir.join("LetMeSleep-Updater.new.exe");
+    if !staged.exists() {
+        return;
+    }
+
+    let target = app_dir.join(UPDATER_EXE);
+    logger.log("Scheduling updater self-replacement");
+
+    let src = staged.to_string_lossy().replace('"', "\"\"");
+    let dst = target.to_string_lossy().replace('"', "\"\"");
+    let ps_script = format!(
+        "$src=\"{src}\"; $dst=\"{dst}\"; for($i=0; $i -lt 40; $i++) {{ try {{ Move-Item -LiteralPath $src -Destination $dst -Force -ErrorAction Stop; exit 0 }} catch {{ Start-Sleep -Milliseconds 500 }} }}; exit 1"
+    );
+
+    let mut cmd = Command::new("powershell");
+    cmd.args([
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-WindowStyle",
+        "Hidden",
+        "-Command",
+        &ps_script,
+    ]);
+    #[cfg(target_os = "windows")]
+    {
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+
+    match cmd.spawn() {
+        Ok(_) => logger.log("Updater self-replacement scheduled"),
+        Err(e) => logger.log(format!("Failed to schedule updater replacement: {e}")),
+    }
 }
 
 fn launch_app(app_dir: &Path, logger: &mut Logger) {
@@ -230,6 +283,8 @@ fn run() -> Result<(), String> {
     fs::write(app_dir.join("VERSION"), latest.to_string())
         .map_err(|e| format!("Write version: {e}"))?;
     let _ = fs::remove_file(&temp_zip);
+
+    schedule_updater_replacement(&app_dir, &mut logger);
 
     logger.log(format!("Update complete: v{latest}"));
     launch_app(&app_dir, &mut logger);

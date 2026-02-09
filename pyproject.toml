@@ -1,0 +1,12 @@
+[project]
+name = "let-me-sleep"
+version = "0.1.0"
+description = "Detect applications preventing Windows from sleeping and show in system tray"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "customtkinter>=5.2.2",
+    "pillow>=12.1.0",
+    "pystray>=0.19.5",
+    "pywin32>=311",
+]

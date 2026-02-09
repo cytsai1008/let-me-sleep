@@ -45,13 +45,33 @@ Download the latest installer from the [Releases](https://github.com/cytsai1008/
 
    # Or using pip
    pip install -e .
-   pip install -r requirements-dev.txt
    ```
 
 3. **Run from source**
    ```bash
+   # With uv
+   uv run python main.py
+
+   # Or with your active venv
    python main.py
    ```
+
+## Usage Instructions
+
+1. Launch Let Me Sleep (from Start Menu, installed shortcut, or `python main.py`).
+2. Check the tray icon:
+   - Green `0` means no blocking process is detected.
+   - Red number means one or more processes are blocking sleep.
+   - Gray `!` means the app cannot read power requests (usually admin permission issue).
+3. Click the tray icon menu and select **Open** to view details.
+4. In the app window, review blocking entries:
+   - Process entries show an **End Task** button.
+   - Driver/system entries are shown under **Usually safe to ignore**.
+5. From the tray menu, you can:
+   - **Refresh** to manually re-check power requests.
+   - **Install service** to create the elevated scheduled task.
+   - Toggle **Start with Windows** after service installation.
+   - **Exit** to close the app.
 
 ## Building
 
@@ -81,8 +101,7 @@ This creates `dist/LetMeSleep.exe` using PyInstaller.
 #### 2. Build Rust Updater
 
 ```bash
-cd updater
-cargo build --release
+cargo build --release --manifest-path updater/Cargo.toml
 ```
 
 The updater executable will be at `updater/target/release/letmesleep-updater.exe`.
@@ -137,8 +156,7 @@ Enable autostart from the system tray menu (requires scheduled task to be instal
 ### Running in Development Mode
 
 ```bash
-# Activate virtual environment (if using venv)
-# Or use uv run
+# Recommended
 uv run python main.py
 ```
 
@@ -200,7 +218,7 @@ The application requires administrator privileges to query Windows power request
 
 ## License
 
-[License information - see LICENSE file]
+This project is licensed under the MIT License. See `LICENSE` for details.
 
 ## Contributing
 

@@ -1,6 +1,9 @@
 """
 Let Me Sleep - Detect applications preventing Windows from sleeping.
 Shows blocking applications in the system tray with a modern GUI.
+
+Icon attribution: Sleep icons created by Freepik - Flaticon
+https://www.flaticon.com/free-icons/sleep
 """
 
 import subprocess
@@ -9,14 +12,17 @@ import time
 import re
 import sys
 import ctypes
+import os
+import tkinter as tk
 from dataclasses import dataclass
 from typing import Optional
 
 import pystray
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageTk
 import customtkinter as ctk
 
 from i18n import t
+import scheduler
 
 
 def is_admin() -> bool:
@@ -37,17 +43,18 @@ def run_as_admin():
     if python.endswith("python.exe"):
         pythonw = python.replace("python.exe", "pythonw.exe")
         import os
+
         if os.path.exists(pythonw):
             python = pythonw
 
     # ShellExecute with "runas" verb for UAC elevation
     ret = ctypes.windll.shell32.ShellExecuteW(
-        None,           # hwnd
-        "runas",        # operation (run as admin)
-        python,         # executable
+        None,  # hwnd
+        "runas",  # operation (run as admin)
+        python,  # executable
         f'"{script}" {params}',  # parameters
-        None,           # directory
-        1               # show window
+        None,  # directory
+        1,  # show window
     )
 
     # ShellExecute returns > 32 on success
@@ -57,6 +64,7 @@ def run_as_admin():
 @dataclass
 class PowerRequest:
     """Represents a power request blocking sleep."""
+
     category: str
     process: str
     pid: str
@@ -103,19 +111,25 @@ def get_power_requests() -> tuple[list[PowerRequest], str | None]:
                 reason = ""
                 if i + 1 < len(lines):
                     next_line = lines[i + 1].strip()
-                    if next_line and not next_line.endswith(":") and not next_line.startswith("["):
+                    if (
+                        next_line
+                        and not next_line.endswith(":")
+                        and not next_line.startswith("[")
+                    ):
                         reason = next_line
                         i += 1
 
                 process_name = get_friendly_name(process_path, req_type)
                 pid = find_pid_by_name(process_name) if req_type == "PROCESS" else ""
 
-                requests.append(PowerRequest(
-                    category=current_category,
-                    process=process_name,
-                    pid=pid,
-                    reason=reason
-                ))
+                requests.append(
+                    PowerRequest(
+                        category=current_category,
+                        process=process_name,
+                        pid=pid,
+                        reason=reason,
+                    )
+                )
 
         if not line:
             current_category = None
@@ -190,7 +204,7 @@ def find_pid_by_name(process_name: str) -> str:
         )
         for line in result.stdout.strip().split("\n"):
             if line and process_name.lower() in line.lower():
-                parts = line.replace('"', '').split(",")
+                parts = line.replace('"', "").split(",")
                 if len(parts) >= 2:
                     return parts[1]
     except:
@@ -214,22 +228,78 @@ def kill_process(pid: str) -> bool:
         return False
 
 
+def get_icon_path(filename: str = "icon.png") -> str:
+    """Resolve icon path for source run vs PyInstaller run."""
+    meipass_dir = getattr(sys, "_MEIPASS", None)
+    if getattr(sys, "frozen", False) and meipass_dir:
+        # PyInstaller onefile/onedir extraction directory
+        return os.path.join(meipass_dir, filename)
+
+    # Direct Python run: keep path relative to this script directory
+    script_relative = os.path.join(os.path.dirname(os.path.abspath(__file__)), filename)
+    if os.path.exists(script_relative):
+        return script_relative
+
+    # Fallback to current working directory
+    return os.path.join(os.getcwd(), filename)
+
+
+def set_windows_app_id():
+    """Set explicit Windows AppUserModelID for stable taskbar icon behavior."""
+    if not sys.platform.startswith("win"):
+        return
+    try:
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
+            "CYTsai.LetMeSleep"
+        )
+    except Exception:
+        pass
+
+
+def apply_window_icon(window):
+    """Apply window icon using ico/png with broad Tk compatibility."""
+    if getattr(sys, "frozen", False):
+        try:
+            window.iconbitmap(default=sys.executable)
+        except Exception:
+            pass
+
+    ico_path = get_icon_path("icon.ico")
+    if os.path.exists(ico_path):
+        try:
+            window.iconbitmap(default=ico_path)
+        except Exception:
+            pass
+
+    png_path = get_icon_path("icon.png")
+    if os.path.exists(png_path):
+        try:
+            resampling = getattr(Image, "Resampling", Image)
+            lanczos = getattr(resampling, "LANCZOS")
+            src = Image.open(png_path).convert("RGBA")
+            large_icon = ImageTk.PhotoImage(src.resize((32, 32), lanczos))
+            small_icon = ImageTk.PhotoImage(src.resize((16, 16), lanczos))
+            window.iconphoto(False, large_icon, small_icon)
+            return (large_icon, small_icon)
+        except Exception:
+            return None
+
+    return None
+
+
 def create_icon_image(actionable_count: int, has_error: bool = False) -> Image.Image:
-    """Create a system tray icon. Only actionable items (killable processes) count as blocking."""
+    """Create a system tray icon. Only actionable items count as blocking."""
     size = 64
     image = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     draw = ImageDraw.Draw(image)
 
     if has_error:
-        # Gray circle - error state
         draw.ellipse([4, 4, size - 4, size - 4], fill=(128, 128, 128, 255))
         text = "!"
     elif actionable_count == 0:
-        # Green circle - all clear (or only ignorable drivers)
         draw.ellipse([4, 4, size - 4, size - 4], fill=(76, 175, 80, 255))
         text = "0"
     else:
-        # Red circle - blocked by actionable processes
         draw.ellipse([4, 4, size - 4, size - 4], fill=(244, 67, 54, 255))
         text = str(actionable_count) if actionable_count < 10 else "9+"
 
@@ -259,7 +329,7 @@ class ProcessCard(ctk.CTkFrame):
             info_frame,
             text=request.process,
             font=ctk.CTkFont(size=14, weight="bold"),
-            anchor="w"
+            anchor="w",
         )
         name_label.pack(fill="x")
 
@@ -272,7 +342,7 @@ class ProcessCard(ctk.CTkFrame):
             text=details,
             font=ctk.CTkFont(size=12),
             text_color=("gray40", "gray60"),
-            anchor="w"
+            anchor="w",
         )
         detail_label.pack(fill="x")
 
@@ -285,7 +355,7 @@ class ProcessCard(ctk.CTkFrame):
                 corner_radius=6,
                 fg_color=("#dc3545", "#dc3545"),
                 hover_color=("#bb2d3b", "#bb2d3b"),
-                command=self.on_kill
+                command=self.on_kill,
             )
             kill_btn.pack(side="right", padx=12, pady=10)
         else:
@@ -305,7 +375,9 @@ class ProcessCard(ctk.CTkFrame):
 class CollapsibleSection(ctk.CTkFrame):
     """A collapsible section with header and content."""
 
-    def __init__(self, master, title: str, count: int, expanded: bool = False, on_toggle=None):
+    def __init__(
+        self, master, title: str, count: int, expanded: bool = False, on_toggle=None
+    ):
         super().__init__(master, fg_color="transparent")
         self.expanded = expanded
         self.on_toggle = on_toggle
@@ -320,7 +392,7 @@ class CollapsibleSection(ctk.CTkFrame):
             text_color=("gray40", "gray60"),
             anchor="w",
             height=32,
-            command=self.toggle
+            command=self.toggle,
         )
         self.header.pack(fill="x")
 
@@ -355,16 +427,25 @@ class MainWindow(ctk.CTkToplevel):
         super().__init__()
         self.monitor = monitor
         self.ignorable_expanded = False  # Track collapsible section state
+        self._tk_icon_images = None
 
         self.title(t("app_name"))
         self.geometry("450x500")
         self.minsize(400, 300)
 
+        self._tk_icon_images = apply_window_icon(self)
+
         # Hide instead of destroy on close
         self.protocol("WM_DELETE_WINDOW", self.hide)
+        # CTkToplevel may override icon after ~200ms on Windows, apply ours later.
+        self.after(350, self._apply_icon_late)
 
         self.create_widgets()
         self.update_ui()
+
+    def _apply_icon_late(self):
+        """Re-apply icon after CTk internal delayed icon set."""
+        self._tk_icon_images = apply_window_icon(self)
 
     def create_widgets(self):
         # Header
@@ -372,9 +453,7 @@ class MainWindow(ctk.CTkToplevel):
         header.pack(fill="x", padx=20, pady=(20, 10))
 
         title = ctk.CTkLabel(
-            header,
-            text=t("app_name"),
-            font=ctk.CTkFont(size=24, weight="bold")
+            header, text=t("app_name"), font=ctk.CTkFont(size=24, weight="bold")
         )
         title.pack(side="left")
 
@@ -385,7 +464,7 @@ class MainWindow(ctk.CTkToplevel):
             height=36,
             corner_radius=18,
             font=ctk.CTkFont(size=18),
-            command=self.refresh
+            command=self.refresh,
         )
         self.refresh_btn.pack(side="right")
 
@@ -397,15 +476,13 @@ class MainWindow(ctk.CTkToplevel):
             self.status_frame,
             text="Checking...",
             font=ctk.CTkFont(size=13),
-            text_color=("gray40", "gray60")
+            text_color=("gray40", "gray60"),
         )
         self.status_label.pack(side="left")
 
         # Scrollable list
         self.scroll_frame = ctk.CTkScrollableFrame(
-            self,
-            fg_color="transparent",
-            corner_radius=0
+            self, fg_color="transparent", corner_radius=0
         )
         self.scroll_frame.pack(fill="both", expand=True, padx=20, pady=(0, 20))
 
@@ -421,30 +498,28 @@ class MainWindow(ctk.CTkToplevel):
 
         if self.monitor.error:
             self.status_label.configure(
-                text=f"⚠ {self.monitor.error}",
-                text_color=("#dc3545", "#dc3545")
+                text=f"⚠ {self.monitor.error}", text_color=("#dc3545", "#dc3545")
             )
             error_label = ctk.CTkLabel(
                 self.scroll_frame,
                 text=t("run_as_admin"),
                 font=ctk.CTkFont(size=14),
                 text_color=("gray40", "gray60"),
-                justify="center"
+                justify="center",
             )
             error_label.pack(pady=40)
             return
 
         if not self.monitor.requests:
             self.status_label.configure(
-                text=f"✓ {t('ready_to_sleep')}",
-                text_color=("#198754", "#20c997")
+                text=f"✓ {t('ready_to_sleep')}", text_color=("#198754", "#20c997")
             )
             empty_label = ctk.CTkLabel(
                 self.scroll_frame,
                 text=f"✓ {t('no_apps_blocking')}\n{t('no_apps_blocking_desc')}",
                 font=ctk.CTkFont(size=14),
                 text_color=("gray40", "gray60"),
-                justify="center"
+                justify="center",
             )
             empty_label.pack(pady=40)
         else:
@@ -454,7 +529,7 @@ class MainWindow(ctk.CTkToplevel):
 
             self.status_label.configure(
                 text=f"⚠ {t('n_apps_blocking', n=len(self.monitor.requests))}",
-                text_color=("#dc3545", "#ff6b6b")
+                text_color=("#dc3545", "#ff6b6b"),
             )
 
             # Show actionable items first
@@ -466,7 +541,9 @@ class MainWindow(ctk.CTkToplevel):
             if ignorable:
                 if actionable:
                     # Add some spacing
-                    spacer = ctk.CTkFrame(self.scroll_frame, height=8, fg_color="transparent")
+                    spacer = ctk.CTkFrame(
+                        self.scroll_frame, height=8, fg_color="transparent"
+                    )
                     spacer.pack(fill="x")
 
                 section = CollapsibleSection(
@@ -474,7 +551,7 @@ class MainWindow(ctk.CTkToplevel):
                     t("usually_safe_to_ignore"),
                     len(ignorable),
                     expanded=self.ignorable_expanded,
-                    on_toggle=lambda exp: setattr(self, 'ignorable_expanded', exp)
+                    on_toggle=lambda exp: setattr(self, "ignorable_expanded", exp),
                 )
                 section.pack(fill="x", pady=4)
 
@@ -485,6 +562,8 @@ class MainWindow(ctk.CTkToplevel):
     def show(self):
         """Show the window."""
         self.update_ui()
+        if self._tk_icon_images is None:
+            self._tk_icon_images = apply_window_icon(self)
         self.deiconify()
         self.lift()
         self.focus_force()
@@ -505,6 +584,7 @@ class SleepMonitor:
         self.running = True
         self.update_interval = 10
         self.ctk_root: Optional[ctk.CTk] = None
+        self._root_tk_icon_images = None
 
     def get_menu(self) -> pystray.Menu:
         """Generate the context menu."""
@@ -514,26 +594,105 @@ class SleepMonitor:
         ]
 
         if self.error:
-            items.append(pystray.MenuItem(f"⚠ {t('requires_admin')}", None, enabled=False))
+            items.append(
+                pystray.MenuItem(f"⚠ {t('requires_admin')}", None, enabled=False)
+            )
         elif not self.requests:
-            items.append(pystray.MenuItem(f"✓ {t('no_apps_blocking')}", None, enabled=False))
+            items.append(
+                pystray.MenuItem(f"✓ {t('no_apps_blocking')}", None, enabled=False)
+            )
         else:
-            items.append(pystray.MenuItem(
-                f"⚠ {t('n_apps_blocking', n=len(self.requests))}",
-                None,
-                enabled=False
-            ))
-            for req in self.requests:
+            actionable = [r for r in self.requests if r.pid]
+            ignorable = [r for r in self.requests if not r.pid]
+            items.append(
+                pystray.MenuItem(
+                    f"⚠ {t('n_apps_blocking', n=len(actionable))}",
+                    None,
+                    enabled=False,
+                )
+            )
+
+            for req in actionable:
                 label = f"  {req.process}"
                 if req.reason:
                     label += f" - {req.reason[:30]}"
                 items.append(pystray.MenuItem(label, None, enabled=False))
 
+            if ignorable:
+                items.append(
+                    pystray.MenuItem(
+                        f"  {t('usually_safe_to_ignore')} ({len(ignorable)})",
+                        None,
+                        enabled=False,
+                    )
+                )
+                for req in ignorable:
+                    label = f"    {req.process}"
+                    if req.reason:
+                        label += f" - {req.reason[:30]}"
+                    items.append(pystray.MenuItem(label, None, enabled=False))
+
         items.append(pystray.Menu.SEPARATOR)
         items.append(pystray.MenuItem(t("refresh"), self.manual_refresh))
+
+        # Start with Windows toggle (checkbox) - requires scheduled task
+        if scheduler.is_task_installed():
+            items.append(
+                pystray.MenuItem(
+                    t("start_with_windows"),
+                    self.toggle_autostart,
+                    checked=lambda item: scheduler.is_autostart_enabled(),
+                )
+            )
+            items.append(
+                pystray.MenuItem(t("uninstall_service"), self.uninstall_service)
+            )
+        else:
+            items.append(pystray.MenuItem(t("install_service"), self.install_service))
+
+        items.append(pystray.Menu.SEPARATOR)
         items.append(pystray.MenuItem(t("exit"), self.quit))
 
         return pystray.Menu(*items)
+
+    def toggle_autostart(self, icon=None, item=None):
+        """Toggle start with Windows (via scheduled task)."""
+        if scheduler.is_admin():
+            new_state = scheduler.toggle_autostart()
+            status = t("enabled") if new_state else t("disabled")
+            self.icon.notify(f"{t('start_with_windows')} {status}", t("app_name"))
+            if self.icon:
+                self.icon.menu = self.get_menu()
+                self.icon.update_menu()
+        else:
+            # Need admin to modify task
+            self.icon.notify(t("requires_admin"), t("app_name"))
+
+    def install_service(self, icon=None, item=None):
+        """Install the scheduled task service."""
+        if scheduler.is_admin():
+            success, msg = scheduler.install_task()
+            if success:
+                self.icon.notify(t("service_installed"), t("app_name"))
+                if self.icon:
+                    self.icon.menu = self.get_menu()
+                    self.icon.update_menu()
+            else:
+                self.icon.notify(f"{t('service_install_failed')}: {msg}", t("app_name"))
+        else:
+            scheduler.run_as_admin_for_install()
+
+    def uninstall_service(self, icon=None, item=None):
+        """Uninstall the scheduled task service."""
+        if scheduler.is_admin():
+            success, msg = scheduler.uninstall_task()
+            if success:
+                self.icon.notify(t("service_uninstalled"), t("app_name"))
+                if self.icon:
+                    self.icon.menu = self.get_menu()
+                    self.icon.update_menu()
+        else:
+            scheduler.run_as_admin_for_uninstall()
 
     def show_window(self, icon=None, item=None):
         """Show the main window."""
@@ -593,6 +752,8 @@ class SleepMonitor:
         ctk.set_appearance_mode("system")
         ctk.set_default_color_theme("blue")
         self.ctk_root = ctk.CTk()
+        self._root_tk_icon_images = apply_window_icon(self.ctk_root)
+        self.ctk_root.after(350, lambda: apply_window_icon(self.ctk_root))
         self.ctk_root.withdraw()
 
         # Initial update
@@ -604,7 +765,7 @@ class SleepMonitor:
             "let-me-sleep",
             create_icon_image(len(actionable), self.error is not None),
             "Let Me Sleep",
-            self.get_menu()
+            self.get_menu(),
         )
 
         # Start monitor thread
@@ -621,13 +782,36 @@ class SleepMonitor:
 
 def main():
     """Entry point."""
-    # Request admin if not already elevated
+    set_windows_app_id()
+
+    # Handle command line arguments
+    if "--install-task-with-autostart" in sys.argv:
+        success, msg = scheduler.install_task(enable_autostart=True)
+        print(msg)
+        sys.exit(0 if success else 1)
+
+    if "--install-task" in sys.argv:
+        success, msg = scheduler.install_task(enable_autostart=False)
+        print(msg)
+        sys.exit(0 if success else 1)
+
+    if "--uninstall-task" in sys.argv:
+        success, msg = scheduler.uninstall_task()
+        print(msg)
+        sys.exit(0 if success else 1)
+
+    # If not admin, try to use scheduled task or request elevation
     if not is_admin():
+        # Try to run via scheduled task if installed
+        if scheduler.is_task_installed():
+            success, _ = scheduler.run_task()
+            if success:
+                sys.exit(0)
+
+        # Otherwise request admin elevation
         if run_as_admin():
-            sys.exit(0)  # Exit this instance, elevated one will start
-        else:
-            # User declined UAC or error - continue without admin
-            pass
+            sys.exit(0)
+        # If user declined, continue without admin (limited functionality)
 
     monitor = SleepMonitor()
     monitor.run()

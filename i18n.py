@@ -35,6 +35,16 @@ TRANSLATIONS = {
         "input_device": "Input Device",
         "hardware_device": "Hardware Device",
         "legacy_kernel_caller": "Legacy Kernel Caller",
+        # Scheduler / Autostart
+        "install_service": "Install Autostart",
+        "uninstall_service": "Uninstall Autostart",
+        "service_installed": "Autostart installed. App will start elevated at user logon.",
+        "service_uninstalled": "Autostart uninstalled.",
+        "service_install_failed": "Failed to install autostart",
+        "service_not_installed": "Autostart is not installed",
+        "start_with_windows": "Autostart at user logon",
+        "enabled": "Enabled",
+        "disabled": "Disabled",
     },
     "zh_TW": {
         "app_name": "Let Me Sleep",
@@ -66,6 +76,16 @@ TRANSLATIONS = {
         "input_device": "輸入裝置",
         "hardware_device": "硬體裝置",
         "legacy_kernel_caller": "舊版核心呼叫程式",
+        # Scheduler / Autostart
+        "install_service": "安裝自動啟動",
+        "uninstall_service": "解除安裝自動啟動",
+        "service_installed": "自動啟動已安裝。程式將在使用者登入時以管理員權限啟動。",
+        "service_uninstalled": "自動啟動已解除安裝。",
+        "service_install_failed": "自動啟動安裝失敗",
+        "service_not_installed": "自動啟動未安裝",
+        "start_with_windows": "登入時自動啟動",
+        "enabled": "已啟用",
+        "disabled": "已停用",
     },
     "zh_CN": {
         "app_name": "Let Me Sleep",
@@ -97,6 +117,16 @@ TRANSLATIONS = {
         "input_device": "输入设备",
         "hardware_device": "硬件设备",
         "legacy_kernel_caller": "旧版内核调用程序",
+        # Scheduler / Autostart
+        "install_service": "安装自动启动",
+        "uninstall_service": "卸载自动启动",
+        "service_installed": "自动启动已安装。程序将在用户登录时以管理员权限启动。",
+        "service_uninstalled": "自动启动已卸载。",
+        "service_install_failed": "自动启动安装失败",
+        "service_not_installed": "自动启动未安装",
+        "start_with_windows": "登录时自动启动",
+        "enabled": "已启用",
+        "disabled": "已禁用",
     },
 }
 

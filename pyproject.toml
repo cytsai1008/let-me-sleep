@@ -10,3 +10,9 @@ dependencies = [
     "pystray>=0.19.5",
     "pywin32>=311",
 ]
+
+[dependency-groups]
+dev = [
+    "packaging>=26.0",
+    "pyinstaller>=6.18.0",
+]

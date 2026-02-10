@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 import pystray
+import psutil
 from PIL import Image, ImageDraw, ImageFont, ImageTk
 import customtkinter as ctk
 
@@ -245,21 +246,31 @@ def get_friendly_name(path: str, req_type: str) -> str:
 
 def find_pid_by_name(process_name: str) -> str:
     """Find PID of a process by name."""
+    if not process_name:
+        return ""
+
+    process_name_lower = process_name.lower()
+    candidate_names = {process_name_lower}
+    if not process_name_lower.endswith(".exe"):
+        candidate_names.add(f"{process_name_lower}.exe")
+
+    partial_match_pid = ""
+
     try:
-        result = subprocess.run(
-            ["tasklist", "/FI", f"IMAGENAME eq {process_name}", "/FO", "CSV", "/NH"],
-            capture_output=True,
-            text=True,
-            creationflags=subprocess.CREATE_NO_WINDOW,
-        )
-        for line in result.stdout.strip().split("\n"):
-            if line and process_name.lower() in line.lower():
-                parts = line.replace('"', "").split(",")
-                if len(parts) >= 2:
-                    return parts[1]
-    except:
+        for proc in psutil.process_iter(attrs=["pid", "name"]):
+            name = (proc.info.get("name") or "").lower()
+            if not name:
+                continue
+
+            if name in candidate_names:
+                return str(proc.info["pid"])
+
+            if not partial_match_pid and process_name_lower in name:
+                partial_match_pid = str(proc.info["pid"])
+    except Exception:
         pass
-    return ""
+
+    return partial_match_pid
 
 
 def kill_process(pid: str) -> bool:
@@ -587,10 +598,16 @@ class MainWindow(ctk.CTkToplevel):
             actionable = [r for r in self.monitor.requests if r.pid]
             ignorable = [r for r in self.monitor.requests if not r.pid]
 
-            self.status_label.configure(
-                text=f"⚠ {t('n_apps_blocking', n=len(self.monitor.requests))}",
-                text_color=("#dc3545", "#ff6b6b"),
-            )
+            if actionable:
+                self.status_label.configure(
+                    text=f"⚠ {t('n_apps_blocking', n=len(actionable))}",
+                    text_color=("#dc3545", "#ff6b6b"),
+                )
+            else:
+                self.status_label.configure(
+                    text=t("ready_drivers_only"),
+                    text_color=("#198754", "#20c997"),
+                )
 
             # Show actionable items first
             for req in actionable:
@@ -666,13 +683,18 @@ class SleepMonitor:
         else:
             actionable = [r for r in self.requests if r.pid]
             ignorable = [r for r in self.requests if not r.pid]
-            items.append(
-                pystray.MenuItem(
-                    f"⚠ {t('n_apps_blocking', n=len(actionable))}",
-                    None,
-                    enabled=False,
+            if actionable:
+                items.append(
+                    pystray.MenuItem(
+                        f"⚠ {t('n_apps_blocking', n=len(actionable))}",
+                        None,
+                        enabled=False,
+                    )
                 )
-            )
+            else:
+                items.append(
+                    pystray.MenuItem(t("ready_drivers_only"), None, enabled=False)
+                )
 
             for req in actionable:
                 label = f"  {req.process}"

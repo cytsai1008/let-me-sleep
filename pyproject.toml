@@ -7,6 +7,7 @@ requires-python = ">=3.13"
 dependencies = [
     "customtkinter>=5.2.2",
     "pillow>=12.1.0",
+    "psutil>=5.9.0",
     "pystray>=0.19.5",
     "pywin32>=311",
 ]

@@ -318,7 +318,7 @@ def create_installer(_mode: str):
     if output_dir.exists():
         installers = list(output_dir.glob("*.exe"))
         if installers:
-            installer = installers[0]
+            installer = max(installers, key=lambda p: p.stat().st_mtime)
             size_mb = installer.stat().st_size / (1024 * 1024)
             print(f"✓ Installer created: {pretty_path(installer)} ({size_mb:.1f} MB)")
             return True

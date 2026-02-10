@@ -1,11 +1,9 @@
 ; Inno Setup Script for Let Me Sleep
 ; Download Inno Setup from: https://jrsoftware.org/isinfo.php
-; Icon attribution: Sleep icons created by Freepik - Flaticon
-; https://www.flaticon.com/free-icons/sleep
 
 #define MyAppName "Let Me Sleep"
-#define MyAppVersion "0.1.3"
-#define MyAppPublisher "Let Me Sleep"
+#define MyAppVersion "0.1.4"
+#define MyAppPublisher "CYTsai"
 #define MyAppURL "https://github.com/cytsai1008/let-me-sleep"
 #define MyAppExeName "LetMeSleep.exe"
 

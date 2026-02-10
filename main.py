@@ -337,6 +337,16 @@ def apply_window_icon(window):
     return None
 
 
+def get_shell_tray_window_handle() -> int:
+    """Return the Shell_TrayWnd handle (0 when explorer tray is unavailable)."""
+    if not sys.platform.startswith("win"):
+        return 0
+    try:
+        return int(ctypes.windll.user32.FindWindowW("Shell_TrayWnd", None))
+    except Exception:
+        return 0
+
+
 def create_icon_image(actionable_count: int, has_error: bool = False) -> Image.Image:
     """Create a system tray icon. Only actionable items count as blocking."""
     size = 64
@@ -636,6 +646,7 @@ class SleepMonitor:
         self.ctk_root: Optional[ctk.CTk] = None
         self._root_tk_icon_images = None
         self._show_gui_event_handle = None
+        self._last_shell_tray_hwnd = 0
 
     def get_menu(self) -> pystray.Menu:
         """Generate the context menu."""
@@ -778,10 +789,34 @@ class SleepMonitor:
             else:
                 tooltip = f"{t('app_name')} - {t('ready_to_sleep')}"
             self.icon.title = tooltip
+            self._refresh_tray_registration_if_needed()
 
         # Update window if visible
         if self.window and self.window.winfo_viewable():
             self.ctk_root.after(0, self.window.update_ui)
+
+    def _refresh_tray_registration_if_needed(self):
+        """Re-register tray icon after Explorer/taskbar recreation."""
+        if not self.icon:
+            return
+
+        hwnd = get_shell_tray_window_handle()
+        if hwnd == self._last_shell_tray_hwnd:
+            return
+
+        self._last_shell_tray_hwnd = hwnd
+        if hwnd == 0:
+            return
+
+        try:
+            self.icon.visible = False
+        except Exception:
+            pass
+
+        try:
+            self.icon.visible = True
+        except Exception:
+            pass
 
     def monitor_loop(self):
         """Background thread that periodically checks for power requests."""
@@ -843,6 +878,8 @@ class SleepMonitor:
             "Let Me Sleep",
             self.get_menu(),
         )
+        self._last_shell_tray_hwnd = get_shell_tray_window_handle()
+        self.update()
 
         # Start monitor thread
         monitor_thread = threading.Thread(target=self.monitor_loop, daemon=True)

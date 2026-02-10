@@ -209,8 +209,8 @@ def build_rust_updater():
 
 
 def create_version_file():
-    """Create DEFAULT_VERSION file in dist."""
-    print_section("Creating DEFAULT_VERSION File")
+    """Create VERSION file in dist."""
+    print_section("Creating VERSION File")
 
     # Try to get version from pyproject.toml
     version = DEFAULT_VERSION  # default
@@ -225,7 +225,7 @@ def create_version_file():
 
     version_file = Path("dist/VERSION")
     version_file.write_text(version, encoding="utf-8")
-    print(f"✓ Created DEFAULT_VERSION file: v{version}")
+    print(f"✓ Created VERSION file: v{version}")
     return version
 
 
@@ -240,7 +240,7 @@ def create_zip_release():
 
     # Get version for filename
     version = DEFAULT_VERSION
-    version_file = dist_dir / "DEFAULT_VERSION"
+    version_file = dist_dir / "VERSION"
     if version_file.exists():
         version = version_file.read_text(encoding="utf-8").strip()
 
@@ -278,7 +278,7 @@ def create_zip_release():
         else:
             print("⚠️  Updater not found in dist/LetMeSleep-Updater.exe")
 
-        version_path = dist_dir / "DEFAULT_VERSION"
+        version_path = dist_dir / "VERSION"
         if version_path.exists():
             archive.write(version_path, version_path.name)
 
@@ -397,7 +397,7 @@ def main():
             print("\n⚠️  Continuing without updater...")
             success = False
 
-    # Step 3: Create DEFAULT_VERSION file (only when building app/updater)
+    # Step 3: Create VERSION file (only when building app/updater)
     if "py" in selected or "rs" in selected:
         create_version_file()
 

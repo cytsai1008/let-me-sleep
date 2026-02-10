@@ -36,24 +36,27 @@ TRANSLATIONS = {
         "hardware_device": "Hardware Device",
         "legacy_kernel_caller": "Legacy Kernel Caller",
         # Scheduler / Autostart
-        "install_service": "Install Autostart",
-        "uninstall_service": "Uninstall Autostart",
-        "service_installed": "Autostart installed. App will start elevated at user logon.",
-        "service_uninstalled": "Autostart uninstalled.",
-        "service_install_failed": "Failed to install autostart",
+        "install_service": "Install Admin Service",
+        "uninstall_service": "Uninstall Admin Service",
+        "service_installed": "Admin Service installed. App will start with elevated privileges without asking.",
+        "service_uninstalled": "Admin Service uninstalled.",
+        "service_install_failed": "Failed to install Admin Service",
         "service_not_installed": "Autostart is not installed",
         "start_with_windows": "Autostart at user logon",
         "enabled": "Enabled",
         "disabled": "Disabled",
+        "installer_options": "Options:",
+        "installer_scheduled_task": "Install as scheduled task (enables admin privileges and logon autostart option)",
+        "installer_autostart": "Start at user logon (requires scheduled task)",
     },
     "zh_TW": {
-        "app_name": "Let Me Sleep",
-        "ready_to_sleep": "可以睡眠",
+        "app_name": "我想睡覺",
+        "ready_to_sleep": "就緒",
         "ready_drivers_only": "就緒 (僅驅動程式)",
         "n_blocking": "{n} 個阻擋中",
         "n_apps_blocking": "{n} 個程式阻擋睡眠",
         "no_apps_blocking": "沒有程式阻擋睡眠",
-        "no_apps_blocking_desc": "您的電腦可以安心睡眠",
+        "no_apps_blocking_desc": "您的電腦可以正常睡眠",
         "requires_admin": "需要系統管理員權限",
         "run_as_admin": "請以系統管理員身分執行\n以偵測阻擋睡眠的程式",
         "end_task": "結束工作",
@@ -77,24 +80,27 @@ TRANSLATIONS = {
         "hardware_device": "硬體裝置",
         "legacy_kernel_caller": "舊版核心呼叫程式",
         # Scheduler / Autostart
-        "install_service": "安裝自動啟動",
-        "uninstall_service": "解除安裝自動啟動",
-        "service_installed": "自動啟動已安裝。程式將在使用者登入時以管理員權限啟動。",
-        "service_uninstalled": "自動啟動已解除安裝。",
-        "service_install_failed": "自動啟動安裝失敗",
-        "service_not_installed": "自動啟動未安裝",
+        "install_service": "安裝管理員服務",
+        "uninstall_service": "解除安裝管理員服務",
+        "service_installed": "管理員服務已安裝。程式將自動以管理員權限啟動。",
+        "service_uninstalled": "管理員服務已解除安裝。",
+        "service_install_failed": "管理員服務安裝失敗",
+        "service_not_installed": "管理員服務未安裝",
         "start_with_windows": "登入時自動啟動",
         "enabled": "已啟用",
         "disabled": "已停用",
+        "installer_options": "選項:",
+        "installer_scheduled_task": "安裝為排程工作（啟用管理員權限與登入自動啟動選項）",
+        "installer_autostart": "登入時自動啟動（需要排程工作）",
     },
     "zh_CN": {
-        "app_name": "Let Me Sleep",
-        "ready_to_sleep": "可以睡眠",
+        "app_name": "我要睡觉",
+        "ready_to_sleep": "就绪",
         "ready_drivers_only": "就绪 (仅驱动程序)",
         "n_blocking": "{n} 个阻止中",
         "n_apps_blocking": "{n} 个程序阻止睡眠",
         "no_apps_blocking": "没有程序阻止睡眠",
-        "no_apps_blocking_desc": "您的电脑可以安心睡眠",
+        "no_apps_blocking_desc": "您的电脑可以正常睡眠",
         "requires_admin": "需要管理员权限",
         "run_as_admin": "请以管理员身份运行\n以检测阻止睡眠的程序",
         "end_task": "结束任务",
@@ -118,13 +124,13 @@ TRANSLATIONS = {
         "hardware_device": "硬件设备",
         "legacy_kernel_caller": "旧版内核调用程序",
         # Scheduler / Autostart
-        "install_service": "安装自动启动",
-        "uninstall_service": "卸载自动启动",
-        "service_installed": "自动启动已安装。程序将在用户登录时以管理员权限启动。",
-        "service_uninstalled": "自动启动已卸载。",
-        "service_install_failed": "自动启动安装失败",
-        "service_not_installed": "自动启动未安装",
-        "start_with_windows": "登录时自动启动",
+        "install_service": "安装管理员服务",
+        "uninstall_service": "卸载管理员服务",
+        "service_installed": "管理员服务已安装。程序将自动以管理员权限启动。",
+        "service_uninstalled": "管理员服务已卸载。",
+        "service_install_failed": "管理员服务安装失败",
+        "service_not_installed": "管理员服务未安装",
+        "start_with_windows": "登录时自启动",
         "enabled": "已启用",
         "disabled": "已禁用",
     },
@@ -134,7 +140,11 @@ TRANSLATIONS = {
 _system_locale = locale.getdefaultlocale()[0] or "en"
 _current_lang = "en"
 
-if _system_locale.startswith("zh_TW") or _system_locale.startswith("zh_Hant"):
+if (
+    _system_locale.startswith("zh_TW")
+    or _system_locale.startswith("zh_HK")
+    or _system_locale.startswith("zh_Hant")
+):
     _current_lang = "zh_TW"
 elif _system_locale.startswith("zh"):
     _current_lang = "zh_CN"
